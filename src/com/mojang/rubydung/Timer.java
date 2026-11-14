@@ -24,8 +24,15 @@ public class Timer {
         if (passedMs > 0L) fps = (float) (1000L / passedMs);
         passedTime += (float) passedMs * timeScale * ticksPerSecond / 1000.0f;
         ticks = (int) passedTime;
-        if (ticks > 100) ticks = 100;
+        // Cap hard: after a slow frame, catch up at most 5 ticks instead of
+        // running a burst of ticks that would compound the stutter.
+        if (ticks > 5) ticks = 5;
         passedTime -= (float) ticks;
+        // After a capped catch-up the leftover fraction can be >= 1, and an
+        // interpolation factor >= 1 renders the camera PAST the entity -- a
+        // jump right after a stutter then looked like a teleport several
+        // blocks up and back.  Drop the stale backlog: a stays in [0, 1).
+        if (passedTime >= 1.0f) passedTime = 0.0f;
         a = passedTime;
     }
 }

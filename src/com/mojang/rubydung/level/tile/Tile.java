@@ -1,6 +1,6 @@
 package com.mojang.rubydung.level.tile;
 
-import com.mojang.rubydung.level.Level;
+import com.mojang.rubydung.level.ILevel;
 import com.mojang.rubydung.phys.AABB;
 
 import java.util.Random;
@@ -48,7 +48,8 @@ public class Tile {
     // Frequently-used named blocks (referenced by generator / behaviour).
     public static Tile rock, grass, dirt, cobble, wood, sapling, bedrock;
     public static Tile water, stillWater, lava, stillLava, sand, gravel;
-    public static Tile log, leaves, sponge, glass, sandstone, dandelion, rose;
+    public static Tile log, leaves, sponge, glass, sandstone, dandelion, rose, rope;
+    public static Tile coalOre, ironOre, goldOre;
     public static Tile brownMushroom, redMushroom, slab, doubleSlab, snow;
 
     private Tile(int id, String name, int topTex, int sideTex, int bottomTex,
@@ -148,6 +149,8 @@ public class Tile {
         dandelion = tiles[37]; rose = tiles[38];
         brownMushroom = tiles[39]; redMushroom = tiles[40];
         doubleSlab = tiles[43]; slab = tiles[44]; sandstone = tiles[52]; snow = tiles[53];
+        rope = tiles[51];   // climb-type decoration, sprinkled on islands
+        goldOre = tiles[14]; ironOre = tiles[15]; coalOre = tiles[16];
     }
 
     public int getTexture(int face) {
@@ -207,7 +210,7 @@ public class Tile {
      *   saplings, flowers and mushrooms decay without light or soil;
      *   sand and gravel fall.
      */
-    public void tick(Level level, int x, int y, int z, Random random) {
+    public void tick(ILevel level, int x, int y, int z, Random random) {
         if (this == grass) {
             if (!level.isLit(x, y, z)) {
                 level.setTile(x, y, z, dirt.id);

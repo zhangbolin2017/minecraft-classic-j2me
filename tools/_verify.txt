@@ -1,0 +1,3 @@
+row 0 non-bg samples: 7962
+row 1 non-bg samples: 4233
+row 2 non-bg samples: 2942

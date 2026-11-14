@@ -1,146 +1,147 @@
 # Minecraft Classic 0.0.11a for Sony Ericsson S500i
 
-A **Java ME / MIDP 2.0** port of an early public Minecraft build — **Classic
-0.0.11a** (16 May 2009) — targeting the **Sony Ericsson S500i** and other phones
-on Sony Ericsson's **JP-7** platform.
+Minecraft 早期公开版本 **Classic 0.0.11a**（2009 年 5 月 16 日）的 **Java ME / MIDP 2.0** 移植版，面向 **Sony Ericsson S500i** 及 Sony Ericsson **JP-7** 平台的其他手机。
 
-The original `minecraft.jar` is a **desktop** Java program built on **LWJGL +
-OpenGL**. It cannot run on a feature phone as-is. This project reimplements the
-same game logic on top of **MIDP 2.0 / CLDC 1.1** and replaces the OpenGL
-renderer with one built on the phone's hardware-accelerated **Mascot Capsule
-Micro3D V3** API (`com.mascotcapsule.micro3d.v3`), which the JP-7 platform
-supports natively.
+原版 `minecraft.jar` 是基于 **LWJGL + OpenGL** 的**桌面** Java 程序，无法直接运行在功能机上。本项目在 **MIDP 2.0 / CLDC 1.1** 之上重新实现了相同的游戏逻辑，并用手机硬件加速的 **Mascot Capsule Micro3D V3** API（`com.mascotcapsule.micro3d.v3`，JP-7 平台原生支持）替换了 OpenGL 渲染器。
 
-> Lineage: this began as a port of rd-132211 (RubyDung) and was advanced to
-> Classic 0.0.11a. The Java package is still `com.mojang.rubydung.*` for
-> continuity, but the game logic matches 0.0.11a.
+> 沿革：本项目最初移植自 rd-132211（RubyDung），后升级到 Classic 0.0.11a。Java 包名仍保留 `com.mojang.rubydung.*` 以保持延续性，但游戏逻辑与 0.0.11a 一致。
 
-## What 0.0.11a adds over rd-132211
+## 0.0.11a 相比 rd-132211 新增的内容
 
-- **Multiple block types** — rock, grass, dirt, stone brick, wood, and bush
-  (`Tile` + `GrassTile`/`DirtTile`/`Bush`), each with per-face textures.
-- **Procedural terrain** — `LevelGen` + `NoiseMap` build a fractal heightmap
-  (two blended fields + a rock layer) and then carve caves, exactly like the
-  desktop build, instead of rd-132211's flat half-filled box.
-- **Living world** — random tile updates (`Level.tick`): grass spreads to lit
-  dirt and dies in shadow; bushes decay without light or soil.
-- **Light/shadow** — per-column light depth drives face brightness.
+- **多种方块类型** — 岩石、草、泥土、石砖、木头、灌木（`Tile` + `GrassTile`/`DirtTile`/`Bush`），每种方块各面有独立纹理。
+- **程序化地形** — `LevelGen` + `NoiseMap` 构建分形高度图（两个混合噪声场 + 岩石层）再挖出洞穴，与桌面版完全一致，取代了 rd-132211 那种半填充的平坦盒子。
+- **有生命的世界** — 随机刻更新（`Level.tick`）：草会向有光照的泥土蔓延，在阴影中枯死；灌木失去光照或土壤后会枯萎。
+- **光照/阴影** — 逐柱（column）光照深度决定表面亮度。
 
-## Why Mascot Capsule
+## 为什么选 Mascot Capsule
 
-The S500i / JP-7 has no OpenGL ES, but it ships two 3D options in firmware:
+S500i / JP-7 没有 OpenGL ES，但固件内置两个 3D 方案：
 
-- **Mascot Capsule Micro3D V3** (HI Corporation) — the native, fast software 3D engine
-- **JSR-184 (M3G)** — the standard Mobile 3D Graphics API
+- **Mascot Capsule Micro3D V3**（HI Corporation）— 原生、快速的软件 3D 引擎
+- **JSR-184（M3G）** — 标准的 Mobile 3D Graphics API
 
-This port uses **Mascot Capsule** because its immediate-mode
-`Graphics3D.renderPrimitives()` call maps cleanly onto the "emit a batch of
-textured quads per frame" rendering style, and it is the faster path on JP-7
-hardware.
+本移植版选择 **Mascot Capsule**，是因为它的立即模式 `Graphics3D.renderPrimitives()` 调用与"每帧提交一批带纹理四边形"的渲染方式天然契合，而且在 JP-7 硬件上是更快的路径。
 
-## How the rendering works
+## 渲染原理
 
-Each frame the renderer:
+每一帧渲染器会：
 
-1. Builds a camera (view) transform from the player's interpolated position and
-   yaw/pitch via `AffineTrans.lookAt()`.
-2. Walks the blocks in a radius around the player and, per block, emits the
-   **exposed faces only** (same neighbour-culling as the original `Tile.render`),
-   using each face's atlas tile via `Tile.getTexture(face)`. Non-solid bushes
-   are emitted as two crossed quads.
-3. Submits those faces as **textured quads** (`PRIMITVE_QUADS |
-   PDATA_TEXURE_COORD | PDATA_COLOR_PER_FACE`) to `Graphics3D.renderPrimitives()`,
-   in batches that respect the engine's limit of < 256 primitives per call.
-4. Per-face brightness (1.0 / 0.8 / 0.6 for top/sides/etc., dimmed in shadow) is
-   folded into the per-face colour.
+1. 用玩家插值后的位置与 yaw/pitch，通过 `AffineTrans.lookAt()` 构建相机（视图）变换。
+2. 遍历玩家周围半径内的方块，逐方块只输出**暴露面**（邻居剔除与原版 `Tile.render` 相同），各面使用 `Tile.getTexture(face)` 给出的图集 tile。非实心的灌木输出为两个交叉的面片。
+3. 将这些面作为**带纹理的四边形**（`PRIMITVE_QUADS |
+   PDATA_TEXURE_COORD | PDATA_COLOR_PER_FACE`）分批提交给 `Graphics3D.renderPrimitives()`，每批不超过引擎限制的 256 个图元。
+4. 各面亮度（顶/侧等分别为 1.0 / 0.8 / 0.6，阴影中更暗）折算进逐面颜色里。
 
-The terrain atlas (`terrain.png`) is converted to an 8-bit uncompressed BMP
-(`terrain.bmp`), the texture format Mascot Capsule expects.
+地形图集（`terrain.png`）会被转换为 8 位非压缩 BMP（`terrain.bmp`），即 Mascot Capsule 要求的纹理格式。
 
-## What carried over from the desktop original
+## 从桌面原版继承的部分
 
-Ported (adapted to CLDC: `Vector` instead of `ArrayList`, `java.util.Random`
-instead of `Math.random`, RMS instead of file I/O):
+直接移植（已适配 CLDC：用 `Vector` 代替 `ArrayList`，用 `java.util.Random` 代替 `Math.random`，用 RMS 代替文件 I/O）：
 
-- `Level` — world storage, light columns, random tile ticks, save/load (RMS)
-- `LevelGen`, `NoiseMap` — terrain generation + cave carving
-- `Tile`, `GrassTile`, `DirtTile`, `Bush` — block definitions and behaviour
-- `Player` — movement, gravity, AABB collision response
-- `AABB` — swept-axis collision clipping
-- `Timer` — fixed 60 Hz tick accumulator
+- `Level` — 世界存储、光照柱、随机刻 tick、存/读档（RMS）
+- `LevelGen`、`NoiseMap` — 地形生成 + 挖洞
+- `Tile`、`GrassTile`、`DirtTile`、`Bush` — 方块定义与行为
+- `Player` — 移动、重力、AABB 碰撞响应
+- `AABB` — 逐轴扫掠式碰撞裁剪
+- `Timer` — 固定 60 Hz 的 tick 累加器
 
-Reimplemented for the phone:
+为手机重新实现的部分：
 
-- `WorldRenderer` — Mascot Capsule renderer (replaces LWJGL `LevelRenderer` +
-  `Tesselator` + `Chunk` display lists)
-- `RayCast` — DDA voxel ray for block targeting (replaces the OpenGL
-  selection-buffer picking, which has no Mascot equivalent)
-- `GameCanvas` — MIDP `Canvas` game loop + keypad input
-- `RubyDungMIDlet` — MIDlet lifecycle entry point
+- `WorldRenderer` — Mascot Capsule 渲染器（替代 LWJGL 的 `LevelRenderer` + `Tesselator` + `Chunk` 显示列表）
+- `RayCast` — 用于选中方块的 DDA 体素射线（替代 OpenGL 选择缓冲区拾取，后者没有 Mascot 等价物）
+- `GameCanvas` — MIDP `Canvas` 游戏循环 + 键盘输入
+- `RubyDungMIDlet` — MIDlet 生命周期入口
 
-## Controls (numeric keypad)
+## 操作
 
-| Key | Action |
-|-----|--------|
-| `2` / `8` | move forward / back |
-| `4` / `6` | strafe left / right |
-| `1` / `3` | turn left / right |
-| `7` / `9` | look up / down |
-| `5` | jump |
-| `*` | attack / break block |
-| `#` | place selected block |
-| `0` | cycle selected block type (rock → dirt → stone brick → wood → bush) |
+| 按键 | 功能 |
+|------|------|
+| 方向键 / 拖拽 | 移动 / 转向 / 视角（触屏拖拽视角） |
+| 数字键 | 选中快捷栏对应格（1~9 格），屏幕显示该物品名 1 秒（仅名称，不带数量） |
+| `*`（freej2me 键盘：**E**） | 攻击 / 破坏方块（也是攻击生物的键） |
+| `#`（freej2me 键盘：**R**） | 放置选中的方块；选中 bone 时弹出骨粉合成框（Yes/No） |
+| `Z`（选中 bone 时） | **专用合成键**：直接弹出骨粉合成框（未选中骨头时 Z = 后退移动） |
+| `0` | 切换到下一个快捷栏槽位 |
+| 右软键（freej2me：**W**）| 打开物品栏 |
+| 左软键（freej2me：**Q**）| 游戏内菜单 |
+| `5` / Enter / FIRE | 跳跃（真机中键） |
+| 空格 | 传送到「虚空平台」 |
+| `Y` / `N` | 骨粉合成框的 Yes / No 快捷键（仅支持字母键的平台） |
 
-The D-pad also works (up/down to move, left/right to turn, fire to break). The
-world auto-saves on exit (RMS).
+> **freej2me 模拟器键位说明**（PC 键盘）：方向键 = 数字 2/4/6/8、Enter = 5（跳跃）、**R = `#`**、**E = `*`**、**Q/W = 左右软键**、A/Z = 上/下移动；**其余字母键会被 freej2me 丢弃，游戏收不到**。因此数字键里 2/4/6/8/5 就是方向键（保持移动），1/3/7/9 直选快捷栏对应格，其余槽位用 `0` 循环或物品栏选取；史莱姆为夜间自然刷新，无手动生成。
 
-## Survival mode
+## 世界与生物
 
-This build runs in **survival** (like Minecraft **Alpha 1.0.1_01**) instead of
-the old creative/free-build mode:
+- **昼夜循环** — 全周期 4 分钟：白天（约 108 秒）→ 黄昏渐变（24 秒）→ 夜晚（84 秒）→ 黎明渐变（24 秒）。**只有天空颜色变化**：白天 0x88B0FF，夜晚过渡为**更暗的蓝**（0x3E4E85，仍是蓝不是黑）；**地形与方块亮度始终不变**（按设定夜晚不做任何变暗）。新世界从清晨开始。**所有怪物只在夜间自然刷新**（黄昏中段至黎明中段）；天亮后已存在的怪物不会消失，也不会再新增。
+- **绳（Rope）自然生成** — 每座岛上**至少自然生成 2 根绳**（更大的岛按面积追加；小岛放不下时会向上垂挂成 2~4 格的长绳）。绳是**可攀爬类型**的装饰方块（交叉面片、无碰撞、不挡光，可采集回物品栏再放置）；ClassiCube 语义里它标记为 CLIMB，但本作尚未实现攀爬逻辑，目前纯粹是装饰/物资。
+- **无限世界** — 单人新世界为 `InfiniteLevel`：以 16 方块为单位按区块流式生成，LRU 最多驻留 96 个区块，跟随玩家位置加载/卸载；带随机种子与方块增量记录。多人游戏下载的地图仍使用有限尺寸的 `Level`。
+- **史莱姆（Slime）** — 贴图小立方体，待机后向玩家跳跃靠近；被击杀时压扁并掉落 **1~2 个粘液球（slimeball）**。**夜间自然刷新**：夜晚每 20~40 秒在玩家周围 6~12 格出现 1~2 只，场上最多 3 只（不再有按键/菜单手动生成）。
+- **红鼠（RedMouse）** — 原地不动的哨兵生物：双足箱式模型，手持 T 型弩，转向玩家并俯仰瞄准，约每 1.6 秒射出一支受重力影响的箭（当前箭伤害为 0，命中逻辑已保留）。4 点生命；死亡后仰倒，掉落木板 ×2 与可拾取的弩。**夜间自然刷新**（每 25~45 秒 1~2 只，最多 3 只）。
+- **爆竹怪（Firecracker）** — 敌对的自爆生物：一个方块的**绿色**身体、一个方块的绿色头部（黑色眼睛和嘴），站在**两个红色爆竹小方块**上，头顶两节**引线方块**。会朝玩家走来（比骷髅略快，遇台阶自动跳）；进入约 1.7 格内**点燃**：引线一节节**缩进头部**、身体绿白闪烁，约 40 tick 后**自爆**。爆炸**破坏半径 2 格内的地形**（基岩除外）、3.5 格内的**玩家受到 3 点伤害（0.15 × 20 HP，约一颗半心）**；**其他生物免疫爆炸伤害**。先下手为强：3 拳（6 HP）打死它——死亡动作是**原地定格一秒**（引线消失的哑炮造型，**此时凑过去绝不会自爆**），然后散架成碎片，并掉落 **1~2 份火药（gunpowder）**。**夜间自然刷新**（每 35~55 秒 1 只，上限 2）。
+- **亥猪首（HaiZhu）** — 召唤生物：**不会自然刷新**。召唤仪式：**泥土搭一个十字架（竖梁 3~5 格连续 + 左右横臂，T 形 / 标准十字 / 加号 / 高十字都认，朝东西或南北均可），再在竖梁正上方压一块石头（原石或圆石都行）**——瞬间十字架连同石头一起消失，原地变出亥猪首（"A HaiZhu answers your call!"）。也支持**平铺十字**：地面泥土加号（中心 + 四臂），石头压在中心正上方。材料必须是泥土（草不行）；放最后一块泥土或放石头都能触发。石头压顶防止泥土建筑误触发。**已知特性（不修）**：因为地下天然就是成片泥土，有时直接把圆石放在厚泥土地上也会凑齐仪式条件召唤出亥猪首。石头压顶也是防误触发的设计：普通泥土建筑里凑巧的加号图案没有石头压顶就不会召唤。模型：脚下一块**悬浮的红色地毯方块**（无腿；地毯上下轻轻浮动）、上面一个**粉色猪头大方块**（猪鼻 + 鼻孔 + 黑眼细节方块）、**嘴里叼着一个绿色小方块**。召唤后**原地保持不动**——不移动、不跳跃、被打也不后退，像个守在那里的小神像。10 点生命、**每拳固定 1 点伤害——正好打十下死**；死亡动作是**持续缩小直到完全消失**，原地掉落一颗 **Haizhuball**（地面掉落物，走近自动吸附拾取）。
+- **酉鸡王（YouJi Wang）** — 召唤生物：**不会自然刷新**。召唤仪式：**开局赠送一颗随机矿物**（煤/铁/金随机其一，见物品栏；新世界每次都送），**圆石**搭十字架，顶上压**任意一种矿物**（煤/铁/金矿皆可）——触发后圆石与矿物全部消失，鸡王登场（"The Rooster King answers your call!"）。两种摆法任选：**①平铺十字（最省事）**：地上摆 5 块圆石加号（中心 + 四臂），中心正上方压矿（共 5 圆石 + 1 矿）；**②竖立十字**：竖梁只需 **2~5 格**（比亥猪首宽松）+ 左右横臂，矿压梁顶。**兽形（鸡形）模型**（总高约 1 格）：**横放的粉色身方块**、粉色头方块从身体**前端昂起**（头顶红色鸡冠小方块 + 头侧黑眼 ×2）、**橙色喙方块**向前突出、左右各一块贴身**橙色翅膀方块**、身下两根细条状**黄色短脚**；登场时**面向召唤者**。召唤后**原地不动**（同亥猪首）；10 点生命、**每拳 1 伤——正好十拳**；死亡动作是**身体刚性向后倒下**（绕脚线后仰 90° 躺平片刻后消失），原地掉落 **1~2 根酉鸡王之羽（YouJi Feather）**（粉色羽毛，16×16 自绘贴图；地面掉落物，走近自动吸附拾取，不可放置）。
+- **Forward（终局生物）** — **击败召唤神像后有 60% 概率登场**：召唤并击杀任意一只亥猪首 / 酉鸡王 / 子鼠皇后，其死亡位置有**六成概率**钻出一只 Forward——**从地里缓缓爬出**（脚下方块冒泥土碎屑），然后**追着玩家打**。**50 点生命、每拳 1 伤——正好五十拳**；它的**每次冲撞挥击造成 5 点伤害**（玩家 20 血，四下倒地，注意走位拉扯）；攻击前柱身会**前倾蓄力**。屏幕上方常驻**血量读数 "forward:50"**（红色等宽字，随受击递减）。**透视渲染：地形永远挡不住它**——隔着山坡墙壁也能直接看到它的身影（渲染在深度清空之后的顶层）。模型：**炭灰色细高柱状身躯**、正面三段**暗红能量裂纹**、**亮红色双眼**、头顶**暗红板冠**、两只粗短腿。死亡动作是**刚性向后倒地**后消失，**没有掉落物**。**在 Haizhuball 秒杀名单内**（50 拳太累可以用球秒）。
+- **子鼠皇（ZiShu / Rat Emperor）** — 召唤生物：**不会自然刷新**。召唤仪式：**铁矿十字架**（竖梁 2~5 格 + 左右横臂，或平铺地面铁矿加号），**顶部压一块金矿**——触发后铁矿与金矿全部消失，鼠皇登场（"The Rat Emperor answers your call!"）。**全细节模型**（总高约 1.35 格，直立鼠皇帝造型）：米白色**大头**（黑方眼 ×2、突出的吻部 + 粉色鼻尖、两侧各两根白色胡须）、头顶**金色三尖皇冠**（带红宝石）、头顶两侧**沙棕色大耳**（粉色内耳）、直立米白身体（**奶白肚皮 + 金色胸徽**）、灰色短臂 ×2、米白短腿 + 浅棕脚 ×2、身后**粉色三段卷尾**、右手持**红金条纹长杆旗**。召唤后**原地不动**（同亥猪首）；10 点生命、**每拳 1 伤——正好十拳**；死亡动作是**身体刚性向前叩首倒地**（区别于酉鸡王的后仰），原地掉落 **3~5 颗子鼠皇智齿（Zishu Tooth）**（象牙黄臼齿，圆牙冠 + 双牙根，16×16 自绘贴图；地面掉落物，走近自动吸附拾取，不可放置）；**不在 Haizhuball 秒杀名单内**。
+- **骷髅（Skeleton）** — 近战生物：一个方块的大头（黑眼黑嘴）、一个方块的细长身体（胸口肋骨暗纹）、细四肢，右手持单方块铁剑（带木护手）。会朝玩家走过来（遇 1 格台阶自动跳上），进入约 1.5 格内站定**挥剑一次**（抬剑→劈下→收回，约 0.6 秒），随后冷却约 2~3.5 秒再挥。**当前挥剑不造成任何伤害**（伤害开关保留，见台账）；**白天不会燃烧**。6 点生命（3 拳），死亡时**全身散架**——头、身体、四肢和铁剑各自向四周弹飞、翻滚着落地弹跳，散落一地后消散，并掉落 2~3 根**骨头**（物品名 **bone**，16×16 自绘贴图）：落在地上，玩家走近即被吸附**收入物品栏**，不可放置。**夜间自然刷新**（每 30~50 秒 1 只，玩家周围 6~12 格，同时最多 2 只）。
 
-- **10 hearts (20 HP)** shown bottom-right, with a brief invulnerability window
-  after each hit.
-- **Fall damage** — `ceil(fallDistance - 3)` damage on landing, exactly like Alpha.
-- **Drowning** — an air supply runs down underwater (bubble row above the hearts);
-  at zero air you take 2 damage per second.
-- **Lava** burns you continuously, and falling into the void (below y -64) is fatal.
-- **Death + auto-respawn** — a "You died!" overlay shows, then you respawn at a
-  fresh spawn point with full health.
-- **No mobs** — zombies have been removed; the world is unpopulated.
+## 物品栏（Minecraft 风格）
 
-## Project layout
+- **飞翔翅（Flying Wing）** — **合成品**（伪物品 id 206）：**5 根酉鸡王之羽合成 1 个**——物品栏选中羽毛按 Z 弹出合成框（与骨粉框同款 Yes/No），点 Yes 消耗 5 羽毛得到飞翔翅；已持有再合成 = 替换为**满耐久**的新翅。**耐久型飞行神器**（耐久 100，图标右下角数字显示）：放进快捷栏**选中**后**一直按住 5 键**就持续上升飞行（松开缓缓下落）；**每飞行 1 分钟耐久 -1**（耐久 100 = 累计可飞 100 分钟），归零翅膀破碎消失；**切换到其他物品会快速下落，但这场下落不扣摔落伤害**（滑翔保护到落地为止）。耐久随存档保存。16×16 自绘贴图（粉羽渐层 + 米黄羽轴）。
+
+- **鼠皇镐（Zishu Pickaxe）** — **合成品**（伪物品 id 208）：**3 颗子鼠皇智齿合成 1 把**——物品栏选中智齿按 Z 弹出合成框，点 Yes 消耗 3 颗得到鼠皇镐；已持有再合成 = 替换为**满耐久**的新镐。**耐久型范围挖掘工具**（耐久 100，图标右下角数字显示）：放进快捷栏**选中**后挖方块 = **一次挖掉以目标方块为中心、沿所挖面平面的 3×3 一片**（挖顶面就是水平 3×3、挖侧壁就是竖直 3×3），9 格的掉落物全部照常掉落；**每挖一次耐久 -1**，归零镐子破碎消失。打怪不消耗耐久。耐久随存档保存。16×16 自绘贴图（紫红拱形镐头 + 亮粉镐尖 + 中央黄宝石 + 棕柄缠绳）。
+
+- **底部快捷栏（hotbar）** — 9 个带边框槽位居中显示在屏幕底部，MC 灰配色；槽内绘制物品**真实贴图图标**（方块取自 terrain.png 图集，骨头用 bone.png），右下角白色数量角标，数量为 0 的槽位打斜线阴影，当前选中槽位白色粗框高亮。`0` 键切换槽位并短暂弹出物品名。
+- **物品栏界面** — 右软键 / `E` 打开：MC 灰面板 + 9 列网格，收录全部可放置方块与全部物品；`2/8/4/6` 移动光标，`5`/FIRE 把选中物品放进**当前快捷栏槽位**并关闭；面板底部同步显示快捷栏一行（黄色框为放入目标），点快捷栏槽位可切换目标。**物品多到超出屏幕时网格自动改为固定高度滚动**：右侧出现**滚动条长条**（浅色滑块指示位置），`2/8` 移动光标自动滚到可见行，**点滚动条上半/下半区**向上/向下翻一行。
+- **矿物** — 石头层里天然嵌着**煤矿（约 5%，随便挖几块石头就能撞见）**、**铁矿（约 3%，y<28）**、**金矿（约 1%，y<20，往下多挖一会儿就有）**，挖了直接收矿石方块，可放置/收藏。无限世界与有限世界都会生成。**基岩也能挖下来**（掉落自己，可收藏/再放置；放出来的基岩同样免疫爆竹怪爆炸）。
+- **方块与物品计数** — 共 66 种方块（id 0~65，Classic 全套）；放置消耗持有数（不足时提示 "Out of: X"），挖掘与击杀生物的掉落物靠近自动吸附拾取计入持有数，存/读档时随玩家状态持久化。掉落规则：石头→圆石、草→泥土、双台阶→台阶等；**砍原木掉原木**；**打树叶什么都不掉**；绳可采集成物资。
+- **bone（骨头）** — 骷髅掉落的物品，名字就叫 **bone**；拾取后收入物品栏（伪物品 id 200，与方块共用计数），可以放进快捷栏查看数量，存/读档保留。
+- **slimeball（粘液球）** — 史莱姆掉落的物品（伪物品 id 202，16×16 自绘贴图：绿色像素球、左上高光、右下深绿阴影）；走近自动吸附收入物品栏，不可放置（提示 "slimeball can't be placed"），暂无用途。
+- **gunpowder（火药）** — 爆竹怪被拳击拆除后掉落的物品（伪物品 id 203，16×16 自绘贴图：灰橙色颗粒小堆、锯齿松散边缘）；走近自动吸附收入物品栏，不可放置，暂无用途（后续可做 TNT 合成）。
+- **Haizhuball（亥猪球）** — 亥猪首死后掉落的青色方块（伪物品 id 204，16×16 自绘贴图；地面掉落物，磁吸拾取）。**耐久型神器**：只能持有一颗（**再捡一颗会替换旧球、耐久回满 100**）；物品图标上的数字是耐久，初始 **100**，每杀一个减 1。**使用方法**：放进快捷栏选中后按使用键（`#`/R）——**秒杀准星瞄准的那一只怪物**（史莱姆/红鼠/骷髅/爆竹怪皆可，爆竹怪按拆除处理不爆炸，战利品照掉；**对亥猪首/酉鸡王/子鼠皇无效**）；没瞄准怪物时不消耗耐久。耐久归零球体消失，耐久随存档保存。
+- **bone meal（骨粉）与合成** — 快捷栏选中 bone 后按 `Z`（或放置键 `#`）：屏幕弹出 **No / Yes** 确认框。点 **No**（或选 No 确认、软键/`0`）两个按钮直接消失、无任何变化；点 **Yes** 消耗 **1 根骨头 → 3 份骨粉**。**长按 Yes 超过 5 秒**：背包里的**全部**骨头一次性换成骨粉（仍是 1 骨 = 3 骨粉），按住期间 Yes 按钮上有绿色进度条提示。键盘：`4/6` 选按钮、按住 `5`/FIRE/`#`（选 Yes 时）同样支持长按 5 秒全换、短按换一根。骨粉自身暂无其他用途（后续可做催熟）。
+
+## 生存模式
+
+本版本以**生存模式**运行（类似 Minecraft **Alpha 1.0.1_01**），而非早期的创造/自由建造模式：
+
+- **10 颗心（20 HP）** 显示在右下角，每次受伤后有短暂无敌时间。
+- **摔落伤害** — 落地时受到 `ceil(fallDistance - 3)` 点伤害，与 Alpha 完全一致。
+- **溺水** — 水下氧气值持续消耗（气泡显示在爱心上方）；氧气耗尽后每秒受到 2 点伤害。
+- **岩浆**会持续灼烧，掉入虚空（y -64 以下）必死。
+- **死亡 + 自动重生** — 显示 "You died!" 遮罩，随后在全新出生点满血复活。
+- **物品计数** — 见上方「方块与物品栏」：放置消耗、拾取补充，是生存玩法的一环。
+- **生物** — 没有僵尸；夜间自然刷新的有史莱姆、红鼠哨兵、骷髅与爆竹怪；**亥猪首不自然刷新**，只能用泥土十字架召唤。详见「世界与生物」。
+
+## 项目结构
 
 ```
-src/      game source (the actual MIDlet — this is what ships)
-stubs/    compile-time stubs for the Mascot Capsule API.
-          These are provided NATIVELY by the phone and are NEVER packaged.
-res/      terrain.bmp, icon.png, MANIFEST.MF
-libs/     MIDP 2.0 + CLDC 1.1 API stubs (compile-only bootclasspath)
-build.sh  build pipeline
-dist/     output: mc-c0.0.11a.jar + mc-c0.0.11a.jad
+src/         游戏源码（真正的 MIDlet — 随 JAR 发布的部分）
+stubs/       Mascot Capsule API 的编译期桩类。
+             这些类由手机原生提供，绝不打包发布。
+res/         贴图与清单：terrain.png/bmp、slime.bmp、char.bmp、icon.png、MANIFEST.MF 等
+libs/        MIDP 2.0 + CLDC 1.1 API 桩（仅编译期 bootclasspath）
+build.sh     Linux/macOS 构建流水线
+build.xml    NetBeans/Ant 构建（配 nbproject/）
+build-bat/   Windows 批处理构建的中间产物（配外层 mc_build.bat）
+tools/       贴图制作脚本（make_terrain_bmp.py、make_slime_bmp.py 等）
+dist/        输出：mc-c0.0.11a.jar + mc-c0.0.11a.jad
+game_track.md 开发台账（迭代记录 / 已知问题 / 待办）
 ```
 
-## Building
+## 构建
 
-Requires a **JDK 8** (to emit Java 1.3 bytecode) and **ProGuard** (for J2ME
-preverification — adds the CLDC `StackMap` attributes real devices require).
+需要 **JDK 8**（用于产出 Java 1.3 字节码）和 **ProGuard**（做 J2ME 预校验 preverify — 补上真机所需的 CLDC `StackMap` 属性）。
 
 ```bash
 ./build.sh
 ```
 
-This produces `dist/mc-c0.0.11a.jar` and `dist/mc-c0.0.11a.jad`. Copy both to the
-phone (or load the `.jad` in an emulator such as KEmulator / J2ME Loader / a real
-JP-7 device) and install.
+会产出 `dist/mc-c0.0.11a.jar` 和 `dist/mc-c0.0.11a.jad`。把两者拷到手机（或在 KEmulator / J2ME Loader 等模拟器、或真 JP-7 设备上加载 `.jad`）安装即可。
 
-> The Mascot Capsule stub classes in `stubs/` are used **only** to compile
-> against the API. They are deliberately excluded from the final JAR — the real
-> implementation lives in the phone firmware, and shipping the empty stubs would
-> break 3D rendering.
+> `stubs/` 中的 Mascot Capsule 桩类**只**用于编译期对照 API。它们被刻意排除在最终 JAR 之外 — 真正的实现位于手机固件中，把空桩类打进包里会破坏 3D 渲染。
 
-## Credits
+## 致谢
 
-- Original Minecraft Classic 0.0.11a / rd-132211 by Markus "Notch" Persson / Mojang.
-- Mascot Capsule Micro3D V3 by HI Corporation.
-- This is a non-commercial preservation / homebrew port.
+- 原版 Minecraft Classic 0.0.11a / rd-132211，作者 Markus "Notch" Persson / Mojang。
+- Mascot Capsule Micro3D V3，来自 HI Corporation。
+- 本项目为非商业性的保存 / 自制（homebrew）移植。

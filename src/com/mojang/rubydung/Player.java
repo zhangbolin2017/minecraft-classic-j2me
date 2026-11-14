@@ -1,6 +1,7 @@
 package com.mojang.rubydung;
 
-import com.mojang.rubydung.level.Level;
+import com.mojang.rubydung.level.ILevel;
+import com.mojang.rubydung.level.InfiniteLevel;
 import com.mojang.rubydung.level.tile.Tile;
 import com.mojang.rubydung.phys.AABB;
 
@@ -21,7 +22,7 @@ public class Player {
     public static final int MAX_AIR = 300;
     private static final int RESPAWN_DELAY = 40;
 
-    private Level level;
+    private ILevel level;
     public float xo, yo, zo;
     public float x, y, z;
     public float xd, yd, zd;
@@ -32,6 +33,12 @@ public class Player {
 
     // Input state, driven by the Canvas key handler.
     public boolean kForward, kBack, kLeft, kRight, kJump, kReset;
+    /** Flying Wing: set by the game each tick while the wing is selected,
+     *  charged and jump held -- grants a steady climb. */
+    public boolean wingFly = false;
+    /** A descent that started from wing flight: fall damage is skipped
+     *  until the next landing. */
+    public boolean wingGlide = false;
 
     // ---- Survival state ----
     public int health = MAX_HEALTH;
@@ -39,29 +46,60 @@ public class Player {
     public int hurtTime = 0;        // counts down; nonzero = recently hurt
     public int invulnerableTime = 0; // damage immunity frames after a hit
     public int deathTime = 0;       // counts up once dead
+    public int deathCount = 0;
     public float fallDistance = 0.0f;
     public boolean inWater = false;
     public boolean inLava = false;
     private int airHurtTimer = 0;
 
-    public Player(Level level) {
+    public Player(ILevel level) {
         this.level = level;
         resetPos();
     }
 
     public void resetPos() {
-        float x = random.nextFloat() * this.level.width;
-        float z = random.nextFloat() * this.level.height;
-        float y = this.level.depth + 10.0f;
-        // Drop the spawn down onto the first solid column so the player
-        // doesn't free-fall the whole sky on a fresh respawn.
-        int ix = (int) x, iz = (int) z;
-        if (ix > 0 && iz > 0 && ix < this.level.width - 1 && iz < this.level.height - 1) {
-            int iy = this.level.depth - 1;
-            while (iy > 1 && this.level.getTile(ix, iy - 1, iz) == 0) iy--;
-            y = iy + 2.0f;
+        int w = this.level.getWidth();
+        int h = this.level.getHeight();
+        int d = this.level.getDepth();
+
+        int bestScore = -1;
+        int bestX = 0, bestZ = 0, bestY = d / 2;
+
+        for (int i = 0; i < 200; ++i) {
+            int ix;
+            int iz;
+            if (w > 2 && h > 2) {
+                ix = 1 + random.nextInt(w - 2);
+                iz = 1 + random.nextInt(h - 2);
+            } else {
+                ix = random.nextInt(256) - 128;
+                iz = random.nextInt(256) - 128;
+            }
+
+            int sy = findSurfaceSolidY(ix, iz, d);
+            if (sy < 1) continue;
+            if (level instanceof InfiniteLevel) {
+                int surface = ((InfiniteLevel) level).estimateSurfaceY(ix, iz);
+                if (sy < surface - 2) continue;
+            }
+
+            if (!isSpawnClear(ix, sy, iz, d)) continue;
+            if (!level.isLit(ix, sy + 1, iz)) continue;
+
+            int score = shoreScore(ix, sy, iz);
+            if (score > bestScore) {
+                bestScore = score;
+                bestX = ix;
+                bestZ = iz;
+                bestY = sy;
+                if (bestScore >= 6) break;
+            }
         }
-        setPos(x, y, z);
+
+        float sx = bestX + 0.5f;
+        float sz = bestZ + 0.5f;
+        float sy = bestY + 2.0f;
+        setPos(sx, sy, sz);
     }
 
     private void setPos(float x, float y, float z) {
@@ -71,6 +109,71 @@ public class Player {
         float w = 0.3f;
         float h = 0.9f;
         this.bb = new AABB(x - w, y - h, z - w, x + w, y + h, z + w);
+    }
+
+    public void teleportTo(float x, float y, float z) {
+        setPos(x, y, z);
+        this.xo = this.x;
+        this.yo = this.y;
+        this.zo = this.z;
+        this.xd = 0.0f;
+        this.yd = 0.0f;
+        this.zd = 0.0f;
+        this.onGround = false;
+        this.fallDistance = 0.0f;
+    }
+
+    public void setRotation(float yRot, float xRot) {
+        this.yRot = yRot;
+        this.xRot = xRot;
+        if (this.xRot < -90.0f) this.xRot = -90.0f;
+        if (this.xRot > 90.0f) this.xRot = 90.0f;
+    }
+
+    private int findSurfaceSolidY(int x, int z, int d) {
+        for (int y = d - 1; y > 0; --y) {
+            if (level.isSolidTile(x, y, z)) return y;
+        }
+        return -1;
+    }
+
+    private boolean isSpawnClear(int x, int surfaceY, int z, int d) {
+        int top = surfaceY + 3;
+        if (top >= d) return false;
+        if (isLiquid(level.getTile(x, surfaceY, z))) return false;
+        for (int y = surfaceY + 1; y <= top; ++y) {
+            int id = level.getTile(x, y, z);
+            if (id != 0) return false;
+        }
+        return true;
+    }
+
+    private int shoreScore(int x, int y, int z) {
+        int score = 0;
+        int r = 4;
+        for (int dz = -r; dz <= r; ++dz) {
+            for (int dx = -r; dx <= r; ++dx) {
+                if (dx == 0 && dz == 0) continue;
+                int id0 = level.getTile(x + dx, y, z + dz);
+                int id1 = level.getTile(x + dx, y + 1, z + dz);
+                if (isWater(id0) || isWater(id1)) score++;
+            }
+        }
+        return score;
+    }
+
+    private boolean isLiquid(int id) {
+        return isWater(id) || isLava(id);
+    }
+
+    private boolean isWater(int id) {
+        return (Tile.water != null && id == Tile.water.id) ||
+               (Tile.stillWater != null && id == Tile.stillWater.id);
+    }
+
+    private boolean isLava(int id) {
+        return (Tile.lava != null && id == Tile.lava.id) ||
+               (Tile.stillLava != null && id == Tile.stillLava.id);
     }
 
     /** Reset the player back to full health for a new game. */
@@ -83,6 +186,13 @@ public class Player {
         this.fallDistance = 0.0f;
         this.xd = this.yd = this.zd = 0.0f;
         resetPos();
+    }
+
+    private void die() {
+        if (this.health <= 0 && this.deathTime > 0) return;
+        this.health = 0;
+        this.deathTime = 0;
+        this.deathCount++;
     }
 
     public boolean isDead() {
@@ -101,10 +211,9 @@ public class Player {
         if (this.health <= 0) return;
         if (this.invulnerableTime > 0) return;
         this.health -= amount;
-        if (this.health < 0) this.health = 0;
         this.hurtTime = 10;
         this.invulnerableTime = 10;
-        if (this.health <= 0) this.deathTime = 0;
+        if (this.health <= 0) die();
     }
 
     public void heal(int amount) {
@@ -136,8 +245,10 @@ public class Player {
         if (kReset) {
             resetPos();
         }
-        if (kForward) ya -= 1.0f;
-        if (kBack) ya += 1.0f;
+        // Camera forward is +Z (see renderer/raycast), so forward/back input
+        // must use the same sign to avoid inverted movement.
+        if (kForward) ya += 1.0f;
+        if (kBack) ya -= 1.0f;
         if (kLeft) xa -= 1.0f;
         if (kRight) xa += 1.0f;
 
@@ -158,6 +269,12 @@ public class Player {
             if (kJump && this.onGround) {
                 this.yd = 0.12f;
             }
+            if (this.wingFly) {
+                // Flying Wing: holding jump lifts the player steadily
+                // (gravity is tiny, so a small velocity suffices).
+                this.yd = 0.10f;
+                this.wingGlide = true;
+            }
             moveRelative(xa, ya, this.onGround ? 0.02f : 0.005f);
             this.yd = (float) ((double) this.yd - 0.005);
             move(this.xd, this.yd, this.zd);
@@ -168,6 +285,12 @@ public class Player {
                 this.xd *= 0.8f;
                 this.zd *= 0.8f;
             }
+        }
+        if (this.wingGlide) {
+            // A glide that began with the wing never deals fall damage;
+            // the protection ends on the next landing.
+            this.fallDistance = 0.0f;
+            if (this.onGround) this.wingGlide = false;
         }
 
         tickEnvironment();
@@ -197,7 +320,7 @@ public class Player {
 
         if (this.y < -64.0f) {
             // Fell out of the world.
-            this.health = 0;
+            die();
         }
     }
 
@@ -243,14 +366,15 @@ public class Player {
 
         // ---- Fall damage accounting ----
         if (this.health > 0) {
-            if (yaOrg < 0.0f) {
-                // Falling: accumulate the distance dropped this step.
-                this.fallDistance += -yaOrg;
-            }
-            if (this.onGround && !wasOnGround) {
-                causeFallDamage(this.fallDistance);
+            if (this.onGround) {
+                if (!wasOnGround) {
+                    causeFallDamage(this.fallDistance);
+                }
                 this.fallDistance = 0.0f;
-            } else if (yaOrg >= 0.0f && this.onGround) {
+            } else if (ya < 0.0f) {
+                // Only count real downward movement while airborne.
+                this.fallDistance += -ya;
+            } else if (yaOrg > 0.0f) {
                 this.fallDistance = 0.0f;
             }
             // Water / lava cancels fall damage on entry.

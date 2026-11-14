@@ -1,6 +1,6 @@
 package com.mojang.rubydung;
 
-import com.mojang.rubydung.level.Level;
+import com.mojang.rubydung.level.ILevel;
 
 /**
  * Simple DDA-style voxel raycast used to pick the block the player is
@@ -10,7 +10,7 @@ import com.mojang.rubydung.level.Level;
 public final class RayCast {
     private RayCast() {}
 
-    public static HitResult pick(Level level, Player p, float reach) {
+    public static HitResult pick(ILevel level, Player p, float reach) {
         double yaw = p.yRot * Math.PI / 180.0;
         double pitch = p.xRot * Math.PI / 180.0;
         double cosPitch = Math.cos(pitch);

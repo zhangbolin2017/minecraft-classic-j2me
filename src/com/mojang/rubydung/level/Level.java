@@ -20,7 +20,7 @@ import javax.microedition.rms.RecordStore;
  *   - GZIP file I/O (level.dat) -> RMS RecordStore (raw block bytes)
  *   - everything else (lighting, random tile ticks, LevelGen) is ported verbatim.
  */
-public class Level {
+public class Level implements ILevel {
     private static final int TILE_UPDATE_INTERVAL = 400;
 
     public final int width;
@@ -68,6 +68,7 @@ public class Level {
             DataInputStream dis = new DataInputStream(new ByteArrayInputStream(data));
             dis.readFully(this.blocks);
             dis.close();
+            ++this.mods;   // whole world changed: invalidate geometry caches
             this.calcLightDepths(0, 0, this.width, this.height);
             for (int i = 0; i < this.levelListeners.size(); ++i) {
                 ((LevelListener) this.levelListeners.elementAt(i)).allChanged();
@@ -170,6 +171,10 @@ public class Level {
         return aABBs;
     }
 
+    /** Total successful setTile mutations; geometry-cache dirty signal. */
+    private int mods = 0;
+    public int modCount() { return this.mods; }
+
     public boolean setTile(int x, int y, int z, int type) {
         if (x < 0 || y < 0 || z < 0 || x >= this.width || y >= this.depth || z >= this.height) {
             return false;
@@ -178,6 +183,7 @@ public class Level {
             return false;
         }
         this.blocks[(y * this.height + z) * this.width + x] = (byte) type;
+        ++this.mods;
         this.calcLightDepths(x, z, 1, 1);
         for (int i = 0; i < this.levelListeners.size(); ++i) {
             ((LevelListener) this.levelListeners.elementAt(i)).tileChanged(x, y, z);
@@ -269,5 +275,17 @@ public class Level {
                 tile.tick(this, x, y, z, this.random);
             }
         }
+    }
+
+    public int getWidth() {
+        return this.width;
+    }
+
+    public int getHeight() {
+        return this.height;
+    }
+
+    public int getDepth() {
+        return this.depth;
     }
 }

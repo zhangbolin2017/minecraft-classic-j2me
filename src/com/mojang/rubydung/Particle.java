@@ -1,6 +1,6 @@
 package com.mojang.rubydung;
 
-import com.mojang.rubydung.level.Level;
+import com.mojang.rubydung.level.ILevel;
 
 import java.util.Random;
 
@@ -19,9 +19,9 @@ public class Particle {
     public int life;
     public boolean removed = false;
 
-    private final Level level;
+    private final ILevel level;
 
-    public Particle(Level level, float x, float y, float z,
+    public Particle(ILevel level, float x, float y, float z,
                     float xd, float yd, float zd, int tex) {
         this.level = level;
         this.x = x; this.y = y; this.z = z;
